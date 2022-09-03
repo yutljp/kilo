@@ -394,75 +394,6 @@ void editor_set_status_message(const char *fmt, ...) {
     E.status_msg_time = time(NULL);
 }
 
-char *editor_rows2string(int *buf_len) {
-    int len = 0;
-    int j;
-    for (j = 0; j < E.num_rows; j++) {
-        len += E.row[j].size + 1;
-    }
-    *buf_len = len;
-
-    char *buf = malloc(len);
-    char *p = buf;
-    for (j = 0; j < E.num_rows; j++) {
-        memcpy(p, E.row[j].chars, E.row[j].size);
-        p += E.row[j].size;
-        *p = '\n';
-        p++;
-    }
-
-    return buf;
-}
-
-void editor_open(char *filename) {
-    free(E.filename);
-    E.filename = strdup(filename);
-
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        die("fopen");
-    }
-
-    char *line = NULL;
-    size_t line_cap = 0;
-    ssize_t line_len;
-    while ((line_len = getline(&line, &line_cap, fp)) != -1) {
-        while (line_len > 0 && (line[line_len - 1] == '\n' ||
-                                line[line_len - 1] == '\r')) {
-            line_len--;
-        }
-        editor_insert_row(E.num_rows, line, line_len);
-    }
-    free(line);
-    fclose(fp);
-    E.dirty = 0;
-}
-
-void editor_save() {
-    if (E.filename == NULL) {
-        return;
-    }
-
-    int len;
-    char *buf = editor_rows2string(&len);
-
-    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
-    if (fd != -1) {
-        if (ftruncate(fd, len) != -1) {
-            if (write(fd, buf, len) == len) {
-                close(fd);
-                free(buf);
-                E.dirty = 0;
-                editor_set_status_message("%d bytes written to disk", len);
-                return;
-            }
-        }
-        close(fd);
-    }
-    free(buf);
-    editor_set_status_message("Can't save! I/O error: %s", strerror(errno));
-}
-
 int editor_row_cx2rx(struct editor_row *row, int cx) {
     int rx = 0;
     int j;
@@ -587,6 +518,42 @@ int editor_read_key() {
     }
 }
 
+char *editor_prompt(char *prompt) {
+    size_t buf_size = 128;
+    char *buf = malloc(buf_size);
+
+    size_t buf_len = 0;
+    buf[0] = '\0';
+
+    while (1) {
+        editor_set_status_message(prompt, buf);
+        editor_refresh_screen();
+
+        int c = editor_read_key();
+        if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+            if (buf_len != 0) {
+                buf[--buf_len] = '\0';
+            }
+        } else if (c == '\x1b') {
+            editor_set_status_message("");
+            free(buf);
+            return NULL;
+        } else if (c == '\r') {
+            if (buf_len != 0) {
+                editor_set_status_message("");
+                return buf;
+            }
+        } else if (!iscntrl(c) && c < 128) {
+            if (buf_len == buf_size - 1) {
+                buf_size *= 2;
+                buf = realloc(buf, buf_size);
+            }
+            buf[buf_len++] = c;
+            buf[buf_len] = '\0';
+        }
+    }
+}
+
 void editor_move_cursor(int key) {
     struct editor_row *row = (E.cy >= E.num_rows) ? NULL : &E.row[E.cy];
 
@@ -623,6 +590,79 @@ void editor_move_cursor(int key) {
     if (E.cx > row_len) {
         E.cx = row_len;
     }
+}
+
+char *editor_rows2string(int *buf_len) {
+    int len = 0;
+    int j;
+    for (j = 0; j < E.num_rows; j++) {
+        len += E.row[j].size + 1;
+    }
+    *buf_len = len;
+
+    char *buf = malloc(len);
+    char *p = buf;
+    for (j = 0; j < E.num_rows; j++) {
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p += E.row[j].size;
+        *p = '\n';
+        p++;
+    }
+
+    return buf;
+}
+
+void editor_open(char *filename) {
+    free(E.filename);
+    E.filename = strdup(filename);
+
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        die("fopen");
+    }
+
+    char *line = NULL;
+    size_t line_cap = 0;
+    ssize_t line_len;
+    while ((line_len = getline(&line, &line_cap, fp)) != -1) {
+        while (line_len > 0 && (line[line_len - 1] == '\n' ||
+                                line[line_len - 1] == '\r')) {
+            line_len--;
+        }
+        editor_insert_row(E.num_rows, line, line_len);
+    }
+    free(line);
+    fclose(fp);
+    E.dirty = 0;
+}
+
+void editor_save() {
+    if (E.filename == NULL) {
+        E.filename = editor_prompt("Save as: %s (ESC to cancel)");
+        if (E.filename == NULL) {
+            editor_set_status_message("Save aborted");
+            return;
+        }
+    }
+
+    int len;
+    char *buf = editor_rows2string(&len);
+
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+    if (fd != -1) {
+        if (ftruncate(fd, len) != -1) {
+            if (write(fd, buf, len) == len) {
+                close(fd);
+                free(buf);
+                E.dirty = 0;
+                editor_set_status_message("%d bytes written to disk", len);
+                return;
+            }
+        }
+        close(fd);
+    }
+    free(buf);
+    editor_set_status_message("Can't save! I/O error: %s", strerror(errno));
 }
 
 void editor_process_key_press() {
