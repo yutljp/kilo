@@ -15,11 +15,12 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
-#define KILO_VERSION "0.0.1"
+#define KILO_VERSION "0.0.2"
 #define TAB_SIZE 4
 #define QUIT_TIMES 3
 
 #define CTRL_KEY(k) ((k) & 0x1f)
+#define CTRL2CHAR(k) ((k) | 0x40)
 
 
 struct abuf {
@@ -181,15 +182,20 @@ void init_editor() {
 
 void editor_update_row(struct editor_row *row) {
     int tabs = 0;
+    int ctrls = 0;
     int j;
     for (j = 0; j < row->size; j++) {
         if (row->chars[j] == '\t') {
             tabs++;
         }
+        /* control chars */
+        if (CTRL_KEY('@') <= row->chars[j] && row->chars[j] <= CTRL_KEY('_')) {
+            ctrls++;
+        }
     }
 
     free(row->render);
-    row->render = malloc(row->size + tabs*TAB_SIZE + 1);
+    row->render = malloc(row->size + (tabs*TAB_SIZE + 1) + ctrls);
 
     int idx = 0;
     for (j = 0; j < row->size; j++) {
@@ -198,6 +204,9 @@ void editor_update_row(struct editor_row *row) {
             while (idx % TAB_SIZE != 0) {
                 row->render[idx++] = ' ';
             }
+        } else if (CTRL_KEY('@') <= row->chars[j] && row->chars[j] <= CTRL_KEY('?')) {
+            row->render[idx++] = '^';
+            row->render[idx++] = CTRL2CHAR(row->chars[j]);
         } else {
                 row->render[idx++] = row->chars[j];
         }
@@ -400,6 +409,8 @@ int editor_row_cx2rx(struct editor_row *row, int cx) {
     for (j = 0; j < cx; j++) {
         if (row->chars[j] == '\t') {
             rx += (TAB_SIZE - 1) - (rx % TAB_SIZE);
+        } else if (CTRL_KEY('@') <= row->chars[j] && row->chars[j] <= CTRL_KEY('?')) {
+            rx ++;
         }
         rx++;
     }
