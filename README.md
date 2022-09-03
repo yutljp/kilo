@@ -9,3 +9,6 @@ https://viewsourcecode.org/snaptoken/kilo/index.html
 `make`
 
 `make install`
+
+## Function call dependent graph
+![graph](main.png)
