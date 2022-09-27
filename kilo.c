@@ -22,13 +22,21 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define CTRL2CHAR(k) ((k) | 0x40)
 
+#define ABUF_INIT {NULL, 0}
+
+#define P_NOR 0
+#define P_BIN 1
+
+
+typedef unsigned char u8;
+
+int P_MODE = P_NOR;
+
 
 struct abuf {
     char *b;
     int len;
 };
-
-#define ABUF_INIT {NULL, 0}
 
 
 enum editor_key {
@@ -477,6 +485,7 @@ void editor_refresh_screen() {
     ab_append(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.b, ab.len);
+
     ab_free(&ab);
 }
 
@@ -656,23 +665,52 @@ void editor_open(char *filename) {
     free(E.filename);
     E.filename = strdup(filename);
 
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        die("fopen");
+    if (P_MODE == P_NOR) {
+        FILE *fp = fopen(filename, "r");
+        if (!fp) {
+            die("fopen");
+        }
+
+        char *line = NULL;
+        size_t line_cap = 0;
+        ssize_t line_len;
+        while ((line_len = getline(&line, &line_cap, fp)) != -1) {
+            while (line_len > 0 && (line[line_len - 1] == '\n' ||
+                                    line[line_len - 1] == '\r')) {
+                line_len--;
+            }
+            editor_insert_row(E.num_rows, line, line_len);
+        }
+        free(line);
+        fclose(fp);
+    } else if (P_MODE == P_BIN) {
+        int i, j;
+        u8 buf;
+        char str[3];
+        int file_size;
+        FILE *fp = fopen(filename, "rb");
+        if (!fp) {
+            die("fopen");
+        }
+        fseek(fp, 0, SEEK_END);
+        file_size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        char *line = malloc(sizeof(u8) * E.screen_cols);
+        for (i = 0; i < (file_size / E.screen_cols + 1)/8; i++) {
+            for (j = 0; j < E.screen_cols; j += 3) {
+                fread(&buf, sizeof(u8), 1, fp);
+                sprintf(str, "%02x", buf);
+                line[j] = str[0];
+                line[j+1] = str[1];
+                line[j+2] = ' ';
+            }
+            editor_insert_row(E.num_rows, line, E.screen_cols);
+        }
+        free(line);
+        fclose(fp);
     }
 
-    char *line = NULL;
-    size_t line_cap = 0;
-    ssize_t line_len;
-    while ((line_len = getline(&line, &line_cap, fp)) != -1) {
-        while (line_len > 0 && (line[line_len - 1] == '\n' ||
-                                line[line_len - 1] == '\r')) {
-            line_len--;
-        }
-        editor_insert_row(E.num_rows, line, line_len);
-    }
-    free(line);
-    fclose(fp);
     E.dirty = 0;
 }
 
@@ -688,19 +726,45 @@ void editor_save() {
     int len;
     char *buf = editor_rows2string(&len);
 
-    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
-    if (fd != -1) {
-        if (ftruncate(fd, len) != -1) {
-            if (write(fd, buf, len) == len) {
-                close(fd);
-                free(buf);
-                E.dirty = 0;
-                editor_set_status_message("%d bytes written to disk", len);
-                return;
+    if (P_MODE == P_NOR) {
+        int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+        if (fd != -1) {
+            if (ftruncate(fd, len) != -1) {
+                if (write(fd, buf, len) == len) {
+                    close(fd);
+                    free(buf);
+                    E.dirty = 0;
+                    editor_set_status_message("%d bytes written to disk", len);
+                    return;
+                }
+            }
+            close(fd);
+        }
+    } else if (P_MODE == P_BIN) {
+        int i, cnt = 0;
+        unsigned int bin;
+        char str[2];
+        FILE *fp = fopen(E.filename, "wb");
+        if (!fp) {
+            die("fopen");
+        }
+        for (i = 0; i < len; i++) {
+            if (buf[i] != ' ' && buf[i] != '\n' && buf[i] != '\r') {
+                str[cnt] = buf[i];
+                cnt++;
+            }
+            if (cnt == 2) {
+                sscanf(str, "%x", &bin);
+                fwrite(&bin, sizeof(u8), 1, fp);
+                cnt = 0;
             }
         }
-        close(fd);
+        fclose(fp);
+        free(buf);
+        E.dirty = 0;
+        return;
     }
+
     free(buf);
     editor_set_status_message("Can't save! I/O error: %s", strerror(errno));
 }
@@ -851,8 +915,29 @@ void editor_process_key_press() {
 int main(int argc, char *argv[]) {
     enable_raw_mode();
     init_editor();
-    if (argc >= 2) {
-        editor_open(argv[1]);
+
+    switch (argc) {
+        case 1:
+            P_MODE = P_NOR;
+            break;
+        case 2: {
+            if (strcmp(argv[1], "-b") || strcmp(argv[1], "--binary")) {
+                P_MODE = P_BIN;
+            } else {
+                P_MODE = P_NOR;
+                editor_open(argv[1]);
+            }
+            break;
+        }
+        case 3: {
+            P_MODE = P_BIN;
+            if (strcmp(argv[1], "-b") || strcmp(argv[1], "--binary")) {
+                editor_open(argv[2]);
+            }
+            break;
+        }
+        default:
+            break;
     }
 
     editor_set_status_message("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
