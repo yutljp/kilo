@@ -12,3 +12,10 @@ https://viewsourcecode.org/snaptoken/kilo/index.html
 
 ## Function call dependent graph
 ![graph](main.png)
+
+## Usage
+Create or edit text files.  
+`kilo` or `kilo filename`
+
+Create or edit binary files.  
+`kilo -b` or `kilo -b filename`
