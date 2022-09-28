@@ -15,7 +15,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
-#define KILO_VERSION "0.1.0"
+#define KILO_VERSION "0.1.1"
 #define TAB_SIZE 4
 #define QUIT_TIMES 3
 
@@ -684,29 +684,29 @@ void editor_open(char *filename) {
         free(line);
         fclose(fp);
     } else if (P_MODE == P_BIN) {
-        int i, j;
+        int i = 0;
         u8 buf;
         char str[3];
-        int file_size;
         FILE *fp = fopen(filename, "rb");
         if (!fp) {
             die("fopen");
         }
-        fseek(fp, 0, SEEK_END);
-        file_size = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
 
         char *line = malloc(sizeof(u8) * E.screen_cols);
-        for (i = 0; i < (file_size / E.screen_cols + 1)/8; i++) {
-            for (j = 0; j < E.screen_cols; j += 3) {
-                fread(&buf, sizeof(u8), 1, fp);
-                sprintf(str, "%02x", buf);
-                line[j] = str[0];
-                line[j+1] = str[1];
-                line[j+2] = ' ';
+        while (fread(&buf, sizeof(u8), 1, fp) == 1) {
+            sprintf(str, "%02x", buf);
+            line[i] = str[0];
+            line[i + 1] = str[1];
+            line[i + 2] = ' ';
+            i += 3;
+            if (i >= E.screen_cols) {
+                editor_insert_row(E.num_rows, line, E.screen_cols);
+                i = 0;
             }
-            editor_insert_row(E.num_rows, line, E.screen_cols);
         }
+        line = realloc(line, sizeof(u8) * i);
+        editor_insert_row(E.num_rows, line, i);
+
         free(line);
         fclose(fp);
     }
