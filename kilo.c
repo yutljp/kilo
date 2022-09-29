@@ -15,7 +15,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
-#define KILO_VERSION "0.1.1"
+#define KILO_VERSION "0.1.2"
 #define TAB_SIZE 4
 #define QUIT_TIMES 3
 
