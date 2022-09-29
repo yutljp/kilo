@@ -15,7 +15,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
-#define KILO_VERSION "0.1.1"
+#define KILO_VERSION "0.1.2"
 #define TAB_SIZE 4
 #define QUIT_TIMES 3
 
@@ -921,7 +921,7 @@ int main(int argc, char *argv[]) {
             P_MODE = P_NOR;
             break;
         case 2: {
-            if (strcmp(argv[1], "-b") || strcmp(argv[1], "--binary")) {
+            if (strcmp(argv[1], "-b") == 0 || strcmp(argv[1], "--binary") == 0) {
                 P_MODE = P_BIN;
             } else {
                 P_MODE = P_NOR;
@@ -931,7 +931,7 @@ int main(int argc, char *argv[]) {
         }
         case 3: {
             P_MODE = P_BIN;
-            if (strcmp(argv[1], "-b") || strcmp(argv[1], "--binary")) {
+            if (strcmp(argv[1], "-b") == 0 || strcmp(argv[1], "--binary") == 0) {
                 editor_open(argv[2]);
             }
             break;
